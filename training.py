@@ -24,8 +24,17 @@ from torchvision import datasets, transforms, models
 from icrawler.builtin import BingImageCrawler
 
 DATA_DIR = Path("data")
-PICKLE_DIR = DATA_DIR / "pickle"
-NOT_PICKLE_DIR = DATA_DIR / "not_pickle"
+PICKLE_DIR = DATA_DIR / "pickle"          # reviewed, confirmed pickle images
+NOT_PICKLE_DIR = DATA_DIR / "not_pickle"  # reviewed, confirmed non-pickle images
+
+# Fresh downloads land here first, UNREVIEWED. Run review.py to sort these
+# into PICKLE_DIR / NOT_PICKLE_DIR (or discard them). Only PICKLE_DIR and
+# NOT_PICKLE_DIR are ever used for training, so nothing unreviewed gets
+# trained on.
+STAGING_DIR = Path("staging")
+STAGING_PICKLE = STAGING_DIR / "pickle_raw"
+STAGING_NOT_PICKLE = STAGING_DIR / "not_pickle_raw"
+
 CHECKPOINT = Path("pickle_model.pt")
 
 IMAGES_PER_ROUND = 30  # how many new images to fetch per class, per round
@@ -42,16 +51,16 @@ NEGATIVE_QUERIES = [
 
 
 def download_images():
-    PICKLE_DIR.mkdir(parents=True, exist_ok=True)
-    NOT_PICKLE_DIR.mkdir(parents=True, exist_ok=True)
+    STAGING_PICKLE.mkdir(parents=True, exist_ok=True)
+    STAGING_NOT_PICKLE.mkdir(parents=True, exist_ok=True)
 
-    print("Downloading pickle images...")
-    pickle_crawler = BingImageCrawler(storage={"root_dir": str(PICKLE_DIR)})
+    print("Downloading candidate pickle images (unreviewed)...")
+    pickle_crawler = BingImageCrawler(storage={"root_dir": str(STAGING_PICKLE)})
     pickle_crawler.crawl(keyword="pickle food jar", max_num=IMAGES_PER_ROUND)
 
     neg_query = random.choice(NEGATIVE_QUERIES)
-    print(f"Downloading non-pickle images ('{neg_query}')...")
-    neg_crawler = BingImageCrawler(storage={"root_dir": str(NOT_PICKLE_DIR)})
+    print(f"Downloading candidate non-pickle images ('{neg_query}', unreviewed)...")
+    neg_crawler = BingImageCrawler(storage={"root_dir": str(STAGING_NOT_PICKLE)})
     neg_crawler.crawl(keyword=neg_query, max_num=IMAGES_PER_ROUND)
 
 
@@ -145,10 +154,18 @@ def main():
 
             clean_dataset()
 
+            staged_count = len(list(STAGING_PICKLE.glob("*"))) + len(list(STAGING_NOT_PICKLE.glob("*")))
+            if staged_count:
+                print(f"{staged_count} new images are waiting in staging/ for review. "
+                      f"Run `python review.py` (in another terminal) to sort them "
+                      f"into the real training set.")
+
             try:
                 loader, classes = get_dataloader()
             except Exception as e:
-                print(f"Not enough data yet to build a dataset ({e}). Retrying shortly...")
+                print(f"No reviewed training data yet ({e}). Run `python review.py` "
+                      f"to approve some of the staged images, then this will pick them up "
+                      f"on the next round.")
                 time.sleep(5)
                 continue
 

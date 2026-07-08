@@ -31,16 +31,37 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 You'll need an up-to-date NVIDIA driver installed (the CUDA *toolkit* itself
 isn't required — the `cu118` PyTorch wheel bundles what it needs).
 
-## 3. Train the model
+## 3. Download images and review them
 
 ```bash
 python training.py
 ```
 
-This runs forever, downloading batches of pickle / non-pickle images and
-fine-tuning a ResNet18 on them, saving `pickle_model.pt` after every round.
-Leave it running for a while (the longer, the better the accuracy) and stop
-it any time with `Ctrl+C` — the last checkpoint is always saved.
+This runs forever, downloading batches of candidate pickle / non-pickle
+images into `staging/` and fine-tuning a ResNet18 on whatever's already been
+reviewed, saving `pickle_model.pt` after every round.
+
+**Important: raw downloads are NOT trusted automatically.** Image search
+results are noisy (jars with no pickles, unrelated "pickle" results, etc.),
+so training only ever happens on images you've manually confirmed. In
+another terminal, run:
+
+```bash
+python review.py
+```
+
+This opens a small window showing each newly-downloaded image one at a
+time. Press:
+- **P** — yes, this is really a pickle → goes into `data/pickle`
+- **N** — no, this isn't a pickle → goes into `data/not_pickle`
+- **D** — discard (broken or irrelevant image)
+- **Space / →** — skip for now
+
+Only images sorted into `data/pickle` / `data/not_pickle` are used for
+training. Run `review.py` periodically while `training.py` keeps
+downloading in the background — the more you review, the better the model
+gets. Stop `training.py` any time with `Ctrl+C`; the last checkpoint is
+always saved.
 
 ## 4. Classify images
 
@@ -58,10 +79,13 @@ will learn from your correction too.
 - **This needs both classes to work.** A "pickle or not" model has to see
   plenty of non-pickle images too, or it'll just learn to say "pickle" for
   everything. `training.py` handles this for you already.
-- **Web-scraped labels are noisy.** Searching "pickle" will pull in some
-  irrelevant results (pickle-flavored snacks, Pickle Rick, etc.). This is
-  normal — a bit of noise won't hurt much, and the correction loop in
-  `main.py` helps clean things up over time.
+- **Web-scraped labels are noisy — that's why review.py exists.** Searching
+  "pickle" will pull in irrelevant results (pickle-flavored snacks, Pickle
+  Rick, empty jars, etc.), and negative-class searches can misfire too.
+  Nothing gets trained on until you've confirmed it in `review.py`, so
+  accuracy comes down to how much you review, not how the search engine
+  happened to label things. The correction loop in `main.py` adds another
+  layer of cleanup on top of that.
 - **Be mindful of scrape volume.** `icrawler` hits Bing's image search;
   running `training.py` for a very long time nonstop may eventually get
   rate-limited. If that happens, just pause it for a while.
